@@ -14,7 +14,9 @@ local NetworkMgr = require("ui/network/manager")
 local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 
+local Math = require("optmath")
 local logger = require("logger")
+local time = require("ui/time")
 local util = require("util")
 local _ = require("gettext")
 local T = FFIUtil.template
@@ -51,7 +53,9 @@ local Readeck = WidgetContainer:extend {
     name = "readeck",
     -- Set by init()
     settings = LuaSettings,
+    api = ReadeckApi,
     cache = ReadeckCache,
+    current_bookmark_id = nil,
 }
 
 function Readeck:onDispatcherRegisterActions()
@@ -89,6 +93,17 @@ function Readeck:init()
                 end,
             }
         end)
+    end
+
+    if self.ui.document then
+        local fpath, fname = util.splitFilePathName(self.ui.document.file)
+        if fpath == self:getSetting("data_dir") .. "/downloaded/" then
+
+            self.onPageUpdate = self._onPageUpdate
+            self.current_bookmark_id = util.splitFileNameSuffix(fname)
+
+            logger.dbg("Readeck bookmark opened: " .. self.current_bookmark_id)
+        end
     end
 end
 
@@ -324,5 +339,34 @@ function Readeck:newBookmarksConfigDialog()
     UIManager:show(dialog)
     dialog:onShowKeyboard()
 end
+
+---------====== Progress sync ========------
+-- TODO-ing all of this
+local SYNC_MIN_TIME_DIFF = time.s(25)
+
+function Readeck:getProgress()
+    return math.floor(100 *
+        (self.ui.document.info.has_pages and self.ui.paging or self.ui.rolling)
+            :getLastPercent())
+end
+
+function Readeck:pushProgress()
+    local percentage = self:getProgress()
+    logger.dbg("Setting new read progress to " .. percentage)
+    self.api:bookmarkUpdate(self.current_bookmark_id, { read_progress = percentage })
+end
+
+function Readeck:onNetworkConnected()
+    -- TODO push queue
+end
+
+function Readeck:_onPageUpdate(page)
+    self:pushProgress()
+end
+
+function Readeck:onCloseDocument()
+    logger.dbg("READECK ON CLOSE DOCUMENT")
+end
+
 
 return Readeck

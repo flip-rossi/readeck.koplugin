@@ -14,7 +14,7 @@
 		- [ ] Search labels
 	- [x] List collections
 - [ ] Bookmarks sync
-	- [ ] Sync reading progress
+	- [-] Sync reading progress
 	- [ ] Sync highlights (with colors)
 	- [ ] Option to archive or mark as favorite while reading (and push when online)
 	- [-] Add bookmark links to Readeck while reading
@@ -23,6 +23,7 @@
 		- [ ] Option (with configurable defaults) to download the new bookmark,
 			mark as finished, mark as archived (like in the browser extension)
 		- [ ] Option to immediately open the new bookmark
+	- [ ] Settings: similar to the ones provided by kosync.koplugin
 - [-] Configuration menu
 	- [x] Logging in
 	- [x] Option to set default labels (e.g.: "from kindle")

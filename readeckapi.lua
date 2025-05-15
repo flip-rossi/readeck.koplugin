@@ -281,7 +281,12 @@ function Api:bookmarkDetails(id)
 end
 
 -- TODO bookmarkDelete
--- TODO bookmarkUpdate
+
+--- See http://your.readeck/docs/api#patch-/bookmarks/-id-
+-- @return Bookmark's updated fields
+function Api:bookmarkUpdate(id, opts)
+    return self:callJsonApi("PATCH", "/bookmarks/" .. id, nil, opts)
+end
 
 -- TODO bookmarkArticle?
 
