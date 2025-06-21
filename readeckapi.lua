@@ -349,7 +349,7 @@ end
 -------======= Other functions =======-------
 
 function Api:getDownloadDir()
-    return self:getSetting("data_dir") .. "/downloaded"
+    return self:getSetting("download_dir") or (self:getSetting("data_dir") .. "/downloaded")
 end
 
 function Api:getBookmarkFilename(bookmark)
