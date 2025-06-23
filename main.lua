@@ -344,23 +344,26 @@ end
 -- TODO-ing all of this
 local SYNC_MIN_TIME_DIFF = time.s(25)
 
-function Readeck:getProgress()
+function Readeck:getLocalProgress()
     return math.floor(100 *
         (self.ui.document.info.has_pages and self.ui.paging or self.ui.rolling)
             :getLastPercent())
 end
 
 function Readeck:pushProgress()
-    local percentage = self:getProgress()
+    local percentage = self:getLocalProgress()
     logger.dbg("Setting new read progress to " .. percentage)
     self.api:bookmarkUpdate(self.current_bookmark_id, { read_progress = percentage })
 end
+
+-- Event handling
 
 function Readeck:onNetworkConnected()
     -- TODO push queue
 end
 
 function Readeck:_onPageUpdate(page)
+    -- TODO read option from how many to how many pages are updated
     self:pushProgress()
 end
 

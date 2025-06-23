@@ -31,6 +31,7 @@
 - [ ] Delete downloaded bookmarks
 	- [ ] Button to delete all/read/archived bookmarks
 	- [ ] Hold a bookmark in the browser to allow deletion
+- [-] Improve internet connection callbacks... a lot
 
 ## Bugs
 

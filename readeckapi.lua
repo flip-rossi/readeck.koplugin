@@ -12,6 +12,7 @@ local _ = require("gettext")
 local T = require("ffi/util").template
 
 local NetworkMgr = require("ui/network/manager")
+local UIManager = require("ui/uimanager")
 local LuaSettings = require("luasettings")
 
 local ReadeckCache = require("readeckcache")
@@ -24,6 +25,9 @@ local function log_return_error(err_msg)
     logger.warn(err_msg)
     return nil, err_msg
 end
+
+local PROMPT_ONLINE_COOLDOWN = 60
+local last_online_prompt = 0
 
 local Api = {
     -- Mandatory
@@ -71,6 +75,11 @@ function Api:buildUrl(path, query)
     return target_url
 end
 
+--- Defines that the API should prompt for connection when not online
+READECKAPI_ONLINE_POLICY_PROMPT = "prompt"
+--- Defines that the API should do nothing when not online
+READECKAPI_ONLINE_POLICY_IGNORE = "ignore"
+
 ---
 -- @param sink
 -- @param method GET, POST, DELETE, PATCH, etc…
@@ -80,49 +89,85 @@ end
 -- @param[opt] headers Defaults to Authorization for API endpoints, none for external
 -- @return header, or nil
 -- @return nil, or error message
-function Api:callApi(sink, method, path, query, body, headers, no_auth)
+function Api:callApi(sink, method, path, opts)
+    local no_auth = opts.no_auth
+    local prompt_online = opts.prompt_online
+    local async = opts.async
+
+
     local server_url = self:getSetting("server_url")
     if not server_url or server_url:len() == 0 then
         return log_return_error(
-            _'Readeck server not defined. Please do so in "Readeck settings ▸ Readeck server and credentials"')
+            _ 'Readeck server not defined. Please do so in "Readeck settings ▸ Readeck server and credentials"')
     end
     if not self:getSetting("server_url"):match("^https?://") then
         return log_return_error(
-            _'Readeck server URL missing protocol "http://" or "https://".  Please adjust in "Readeck settings ▸ Readeck server and credentials"')
+            _ 'Readeck server URL missing protocol "http://" or "https://".  Please adjust in "Readeck settings ▸ Readeck server and credentials"')
     end
 
     local api_token = self:getSetting("api_token")
     if not no_auth and (not api_token or api_token:len() == 0) then
-        logger.dbg("BABEU")
         local username = self:getSetting("username")
         local password = self:getSetting("password")
         if username and username:len() ~= 0 and password and password:len() ~= 0 then
-            logger.dbg("BABEU2")
             local result, err = self:authenticate(username, password)
             if err then
                 return result, err
             end
         else
-            logger.dbg("BABEU3")
             return log_return_error(
-                _'Need authentication, but username and/or password not defined. Please do so in "Readeck settings ▸ Readeck server and credentials"')
+                _ 'Need authentication, but username and/or password not defined. Please do so in "Readeck settings ▸ Readeck server and credentials"')
         end
     end
-    logger.dbg("BABEU4")
 
     local ret
-    NetworkMgr:runWhenOnline(function()
-        ret = { self:callApiWhenOnline(sink, method, path, query, body, headers, no_auth) }
-    end)
-
-    if ret then
-        return table.unpack(ret)
+    local callback
+    if type(async) == "table" then
+        callback = function() async.result = { self:callApiWhenOnline(sink, method, path, opts) } end
     else
-        return log_return_error("Couldn't connect to the internet.")
+        callback = function() ret = { self:callApiWhenOnline(sink, method, path, opts) } end
+    end
+
+    if os.time() - last_online_prompt >= PROMPT_ONLINE_COOLDOWN then
+        if prompt_online and not async then
+            NetworkMgr:goOnlineToRun(callback)
+            last_online_prompt = os.time()
+        elseif prompt_online and async then
+            NetworkMgr:runWhenOnline(callback)
+            last_online_prompt = os.time()
+        elseif async then
+            if NetworkMgr:isConnected() then
+                UIManager:scheduleIn(0.001, callback)
+            end
+        elseif NetworkMgr:isConnected() then
+            callback()
+        else
+            logger.info("Readeck API: Dropped " .. tostring(method) .. " " .. tostring(path)
+                .. " request because was not online")
+        end
+    elseif NetworkMgr:isConnected() then
+        if async then
+            UIManager:scheduleIn(0.001, callback)
+        else
+            callback()
+        end
+    end
+
+    if not async then
+        if ret then
+            return table.unpack(ret)
+        else
+            return log_return_error("Couldn't connect to the internet.")
+        end
     end
 end
 
-function Api:callApiWhenOnline(sink, method, path, query, body, headers, no_auth)
+function Api:callApiWhenOnline(sink, method, path, opts)
+    local query = opts.query
+    local body = opts.body
+    local headers = opts.headers
+    local no_auth = opts.no_auth
+
     local target_url = self:buildUrl(path, query)
     logger.dbg("Readeck API: Sending " .. method .. " " .. target_url)
 
@@ -161,22 +206,22 @@ function Api:callApiWhenOnline(sink, method, path, query, body, headers, no_auth
     end
 end
 
-function Api:callDownloadApi(file, method, path, query, body, headers, no_auth)
+function Api:callDownloadApi(file, method, path, opts)
     local sink = ltn12.sink.file(io.open(file, "wb"))
-    return self:callApi(sink, method, path, query, body, headers, no_auth)
+    return self:callApi(sink, method, path, opts)
 end
 
 ---
 -- @return Lua table parsed from response JSON, or nil
 -- @return The response headers, or error message
-function Api:callJsonApi(method, path, query, body, headers, no_auth)
-    headers = headers or {}
-    headers["Accept"] = "application/json"
+function Api:callJsonApi(method, path, opts)
+    opts.headers = opts.headers or {}
+    opts.headers["Accept"] = "application/json"
 
     local response_data = {}
     local sink = ltn12.sink.table(response_data)
 
-    local resp_headers, err = self:callApi(sink, method, path, query, body, headers, no_auth)
+    local resp_headers, err = self:callApi(sink, method, path, opts)
 
     local content = table.concat(response_data, "")
     logger.dbg("Readeck API response: " .. content)
@@ -226,7 +271,7 @@ function Api:authenticate(username, password)
         password = password,
         roles = { "scoped_bookmarks_r", "scoped_bookmarks_w" }
     }
-    local result, err, err_json = self:callJsonApi("POST", "/auth", nil, body, nil, true)
+    local result, err, err_json = self:callJsonApi("POST", "/auth", { body = body, no_auth = true })
     if not result then
         return result, err_json and err_json.message or err
     end
@@ -247,7 +292,7 @@ end
 --- See https://your.readeck/docs/api#get-/bookmarks
 function Api:bookmarkList(query, cache_entry)
     -- TODO define limits and pagination?
-    local result, err = self:callJsonApi("GET", "/bookmarks", query)
+    local result, err = self:callJsonApi("GET", "/bookmarks", { query = query, async = false })
     if result and cache_entry then
         self.cache:cacheBookmarkList(cache_entry, result)
     elseif cache_entry then
@@ -261,10 +306,14 @@ end
 -- @return The new bookmark's id, or nil
 -- @return nil, or error message
 function Api:bookmarkCreate(bookmark_url, title, labels)
-    local response, headers = self:callJsonApi("POST", "/bookmarks", {}, {
-        url = bookmark_url,
-        title = #title ~= 0 and title or nil,
-        labels = #labels ~= 0 and labels or nil,
+    local response, headers = self:callJsonApi("POST", "/bookmarks", {
+        body = {
+            url = bookmark_url,
+            title = #title ~= 0 and title or nil,
+            labels = #labels ~= 0 and labels or nil,
+        },
+        prompt_online = true,
+        async = true
     })
     if not response or not headers then
         return response, headers
@@ -277,15 +326,16 @@ end
 --- See http://your.readeck/docs/api#get-/bookmarks/-id-
 -- @return A table with the bookmark's details
 function Api:bookmarkDetails(id)
-    return self:callJsonApi("GET", "/bookmarks/" .. id)
+    return self:callJsonApi("GET", "/bookmarks/" .. id, { prompt_online = true })
 end
 
 -- TODO bookmarkDelete
 
 --- See http://your.readeck/docs/api#patch-/bookmarks/-id-
 -- @return Bookmark's updated fields
-function Api:bookmarkUpdate(id, opts)
-    return self:callJsonApi("PATCH", "/bookmarks/" .. id, nil, opts)
+function Api:bookmarkUpdate(id, opts, prompt_online)
+    return self:callJsonApi("PATCH", "/bookmarks/" .. id,
+        { body = opts, prompt_online = prompt_online, async = true })
 end
 
 -- TODO bookmarkArticle?
@@ -294,15 +344,17 @@ end
 -- @return Response header, or nil
 -- @return nil, or error message
 function Api:bookmarkExport(file, id)
-    return self:callDownloadApi(file, "GET", "/bookmarks/" .. id .. "/article.epub", nil, nil,
-        { ["Accept"] = "application/epub+zip" })
+    return self:callDownloadApi(file, "GET", "/bookmarks/" .. id .. "/article.epub", {
+            headers = { ["Accept"] = "application/epub+zip" },
+            prompt_online = true
+        })
 end
 
 -- -- Labels
 
 --- See https://your.readeck/docs/api#get-/bookmarks/labels
 function Api:labelList()
-    local result, err = self:callJsonApi("GET", "/bookmarks/labels")
+    local result, err = self:callJsonApi("GET", "/bookmarks/labels", { prompt_online = true })
     if result then
         self.cache:cacheLabelList(result)
     else
@@ -330,7 +382,7 @@ end
 --- See https://your.readeck/docs/api#get-/bookmarks/collections
 function Api:collectionList()
     -- TODO define limits and pagination?
-    local result, err = self:callJsonApi("GET", "/bookmarks/collections")
+    local result, err = self:callJsonApi("GET", "/bookmarks/collections", { prompt_online = true })
     if result then
         self.cache:cacheCollectionList(result)
     else
@@ -344,7 +396,7 @@ end
 
 --- See https://your.readeck/docs/api#get-/bookmarks/collections/-id-
 function Api:collectionDetails(id)
-    return self:callJsonApi("GET", "/bookmarks/collections/" .. id)
+    return self:callJsonApi("GET", "/bookmarks/collections/" .. id, { prompt_online = true })
 end
 
 -- TODO collectionDelete
