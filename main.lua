@@ -212,6 +212,7 @@ and then restart KOReader.]], self.settings.file)
             :saveSetting("username", fields[2])
             :saveSetting("password", fields[3])
             :saveSetting("api_token", fields[4])
+            :saveSetting("download_dir", fields[5])
             :flush()
     end
 
@@ -234,6 +235,10 @@ and then restart KOReader.]], self.settings.file)
                 description = _"API Token",
                 text_type = "password",
                 hint = _"Will be acquired automatically if Username and Password are given."
+            }, {
+                text = self:getSetting("download_dir"),
+                description = "Download Directory",
+                hint = _"Will default to a subfolder of the data directory if empty"
             },
         },
         buttons = {

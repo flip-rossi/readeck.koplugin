@@ -349,7 +349,12 @@ end
 -------======= Other functions =======-------
 
 function Api:getDownloadDir()
-    return self:getSetting("download_dir") or (self:getSetting("data_dir") .. "/downloaded")
+    local ret = self:getSetting("download_dir")
+    if not ret or ret == "" then
+        ret = self:getSetting("data_dir") .. "/downloaded"
+    end
+    
+    return ret
 end
 
 function Api:getBookmarkFilename(bookmark)
