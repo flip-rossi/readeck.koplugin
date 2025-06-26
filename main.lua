@@ -166,6 +166,8 @@ function Readeck:onAddArticleToReadeck(article_url)
 end
 
 function Readeck:addToMainMenu(menu_items)
+    local settings = self.settings
+
     menu_items.readeck_bookmarks = {
         text = _"Readeck bookmarks",
         sorting_hint = "search",
@@ -190,7 +192,17 @@ function Readeck:addToMainMenu(menu_items)
                 callback = function()
                     return self:newBookmarksConfigDialog()
                 end,
-            }
+            }, {
+                text = _"Select download directory",
+                keep_menu_open = true,
+                callback = function()
+                    require("ui/downloadmgr"):new{
+                        onConfirm = function(path)
+                            settings:saveSetting("download_dir", path)
+                        end,
+                    }:chooseDir(ReadeckApi:getDownloadDir())
+                end,
+            },
         },
     }
 end
@@ -212,7 +224,6 @@ and then restart KOReader.]], self.settings.file)
             :saveSetting("username", fields[2])
             :saveSetting("password", fields[3])
             :saveSetting("api_token", fields[4])
-            :saveSetting("download_dir", fields[5])
             :flush()
     end
 
@@ -235,10 +246,6 @@ and then restart KOReader.]], self.settings.file)
                 description = _"API Token",
                 text_type = "password",
                 hint = _"Will be acquired automatically if Username and Password are given."
-            }, {
-                text = self:getSetting("download_dir"),
-                description = "Download Directory",
-                hint = _"Will default to a subfolder of the data directory if empty"
             },
         },
         buttons = {
