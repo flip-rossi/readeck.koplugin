@@ -166,7 +166,6 @@ function Readeck:onAddArticleToReadeck(article_url)
 end
 
 function Readeck:addToMainMenu(menu_items)
-    local settings = self.settings
 
     menu_items.readeck_bookmarks = {
         text = _"Readeck bookmarks",
@@ -198,9 +197,9 @@ function Readeck:addToMainMenu(menu_items)
                 callback = function()
                     require("ui/downloadmgr"):new{
                         onConfirm = function(path)
-                            settings:saveSetting("download_dir", path)
+                            self.settings:saveSetting("download_dir", path)
                         end,
-                    }:chooseDir(ReadeckApi:getDownloadDir())
+                    }:chooseDir(self.api:getDownloadDir())
                 end,
             },
         },
