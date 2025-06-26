@@ -166,6 +166,7 @@ function Readeck:onAddArticleToReadeck(article_url)
 end
 
 function Readeck:addToMainMenu(menu_items)
+
     menu_items.readeck_bookmarks = {
         text = _"Readeck bookmarks",
         sorting_hint = "search",
@@ -190,7 +191,17 @@ function Readeck:addToMainMenu(menu_items)
                 callback = function()
                     return self:newBookmarksConfigDialog()
                 end,
-            }
+            }, {
+                text = _"Select download directory",
+                keep_menu_open = true,
+                callback = function()
+                    require("ui/downloadmgr"):new{
+                        onConfirm = function(path)
+                            self.settings:saveSetting("download_dir", path)
+                        end,
+                    }:chooseDir(self.api:getDownloadDir())
+                end,
+            },
         },
     }
 end
