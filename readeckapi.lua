@@ -29,8 +29,6 @@ local Api = {
     -- Mandatory
     settings = LuaSettings,
     cache = ReadeckCache,
-    -- Optional
-    proxy = nil,
 }
 
 function Api:new(o)
@@ -143,16 +141,17 @@ function Api:callApiWhenOnline(sink, method, path, query, body, headers, no_auth
         headers["Content-Length"] = tostring(#bodyJson)
     end
 
-    local code, header = socket.skip(1, http.request {
+    local success, error, code, header = pcall(http.request, {
         url = target_url,
         method = method,
         headers = headers,
-        proxy = self.proxy,
         sink = sink,
         source = source,
     })
 
-    if type(code) ~= "number" then
+    if not success then
+        return log_return_error("socket.http error: " .. error)
+    elseif type(code) ~= "number" then
         return log_return_error(code or _ "Unknown error")
     elseif code >= 400 then
         return log_return_error("Status code " .. code)
